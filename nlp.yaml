@@ -1,0 +1,17 @@
+nlp_engine_name: spacy
+models:
+  - lang_code: en
+    model_name: en_core_web_lg
+  - lang_code: nl
+    model_name: nl_core_news_lg
+
+ner_model_configuration:
+  model_to_presidio_entity_mapping:
+    PER: PERSON
+    PERSON: PERSON
+    ORG: ORGANIZATION
+    LOC: LOCATION
+    GPE: LOCATION
+    DATE: DATE_TIME
+    TIME: DATE_TIME
+  default_score: 0.85
