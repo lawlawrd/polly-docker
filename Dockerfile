@@ -61,7 +61,8 @@ COPY presidio_analyzer_server.py /opt/presidio/analyzer_server.py
 COPY presidio_anonymizer_server.py /opt/presidio/anonymizer_server.py
 COPY start.sh /opt/start.sh
 
-RUN chmod +x /opt/start.sh
+RUN sed -i 's/\r$//' /opt/start.sh \
+    && chmod +x /opt/start.sh
 
 EXPOSE 8081
 
