@@ -14,6 +14,7 @@ from presidio_analyzer import (
     AnalyzerEngine,
     AnalyzerEngineProvider,
     AnalyzerRequest,
+    RecognizerResult,
 )
 from werkzeug.exceptions import HTTPException
 
@@ -45,6 +46,28 @@ def _exclude_attributes_from_dto(results):
     for result in results:
         if hasattr(result, "recognition_metadata"):
             delattr(result, "recognition_metadata")
+
+
+def _prioritize_emails(results: list[RecognizerResult]) -> list[RecognizerResult]:
+    """Drop other entities that sit entirely inside an email span."""
+
+    emails = [res for res in results if res.entity_type == "EMAIL_ADDRESS"]
+    if not emails:
+        return results
+
+    filtered: list[RecognizerResult] = []
+    for result in results:
+        if result.entity_type == "EMAIL_ADDRESS":
+            filtered.append(result)
+            continue
+
+        overlaps_email = any(
+            email.start <= result.start and email.end >= result.end for email in emails
+        )
+        if overlaps_email:
+            continue
+        filtered.append(result)
+    return filtered
 
 
 def create_app() -> Flask:
@@ -90,6 +113,7 @@ def create_app() -> Flask:
                 allow_list_match=payload.allow_list_match,
                 regex_flags=payload.regex_flags,
             )
+            detections = _prioritize_emails(detections)
             _exclude_attributes_from_dto(detections)
             body = json.dumps(
                 detections,
