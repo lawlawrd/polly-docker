@@ -11,3 +11,14 @@ recognizers:
   - name: SpacyRecognizer
     type: predefined
     supported_languages: ["en","nl"]
+  - name: CustomEmailRegexRecognizer
+    type: regex
+    supported_languages: ["en","nl"]
+    supported_entities: ["EMAIL_ADDRESS"]
+    patterns:
+      - name: email_standard
+        regex: (?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b
+        score: 1.0
+      - name: email_obfuscated
+        regex: (?i)\b[A-Z0-9._%+-]+\s*(?:\(|\{|\[)?at(?:\)|\}|\])\s*[A-Z0-9.-]+\s*(?:\(|\{|\[)?dot(?:\)|\}|\])\s*[A-Z]{2,}\b
+        score: 0.85
