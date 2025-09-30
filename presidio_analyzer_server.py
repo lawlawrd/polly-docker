@@ -49,7 +49,7 @@ def _exclude_attributes_from_dto(results):
 
 
 def _prioritize_emails(results: list[RecognizerResult]) -> list[RecognizerResult]:
-    """Drop other entities that sit entirely inside an email span."""
+    """Drop any non-email entities that overlap an email span."""
 
     emails = [res for res in results if res.entity_type == "EMAIL_ADDRESS"]
     if not emails:
@@ -62,7 +62,8 @@ def _prioritize_emails(results: list[RecognizerResult]) -> list[RecognizerResult
             continue
 
         overlaps_email = any(
-            email.start <= result.start and email.end >= result.end for email in emails
+            not (result.end <= email.start or result.start >= email.end)
+            for email in emails
         )
         if overlaps_email:
             continue
