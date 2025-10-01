@@ -16,7 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PRESIDIO_ANONYMIZER_PORT=5001 \
     ANALYZER_CONF_FILE=/opt/presidio/analyzer-config.yml \
     NLP_CONF_FILE=/opt/presidio/nlp.yaml \
-    RECOGNIZER_REGISTRY_CONF_FILE=/opt/presidio/recognizers.yaml
+    RECOGNIZER_REGISTRY_CONF_FILE=/opt/presidio/recognizers.yaml \
+    POLLY_GIT_REF=${POLLY_GIT_REF}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
@@ -25,6 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     gnupg \
+    cron \
+    util-linux \
     locales \
     tini \
     && echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen \
@@ -60,6 +63,14 @@ COPY recognizers.yaml /opt/presidio/recognizers.yaml
 COPY presidio_analyzer_server.py /opt/presidio/analyzer_server.py
 COPY presidio_anonymizer_server.py /opt/presidio/anonymizer_server.py
 COPY start.sh /opt/start.sh
+
+RUN mkdir -p /opt/scripts
+COPY container/update-polly.sh /opt/scripts/update-polly.sh
+COPY container/polly-cron /etc/cron.d/polly
+RUN chmod 700 /opt/scripts/update-polly.sh \
+    && chmod 644 /etc/cron.d/polly \
+    && mkdir -p /var/log \
+    && touch /var/log/polly-update.log
 
 RUN sed -i 's/\r$//' /opt/start.sh \
     && chmod +x /opt/start.sh

@@ -11,26 +11,33 @@ RECOGNIZER_REGISTRY_CONF_FILE="${RECOGNIZER_REGISTRY_CONF_FILE:-/opt/presidio/re
 ANALYZER_PORT="${PRESIDIO_ANALYZER_PORT:-5002}"
 ANONYMIZER_PORT="${PRESIDIO_ANONYMIZER_PORT:-5001}"
 POLLY_DIR="/opt/polly"
+POLLY_PID_FILE="/tmp/polly.pid"
+POLLY_RESTART_FLAG="/tmp/polly_restart_requested"
 
 POLLY_PID=""
 ANALYZER_PID=""
 ANONYMIZER_PID=""
+CRON_PID=""
+SHUTDOWN_REQUESTED=0
 
 terminate() {
+  SHUTDOWN_REQUESTED=1
   log "Stopping services..."
-  for pid in "${POLLY_PID}" "${ANALYZER_PID}" "${ANONYMIZER_PID}"; do
+  for pid in "${POLLY_PID}" "${ANALYZER_PID}" "${ANONYMIZER_PID}" "${CRON_PID}"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
   done
+  rm -f "${POLLY_PID_FILE}"
 }
 
 cleanup() {
-  for pid in "${ANALYZER_PID}" "${ANONYMIZER_PID}"; do
+  for pid in "${ANALYZER_PID}" "${ANONYMIZER_PID}" "${CRON_PID}"; do
     if [[ -n "$pid" ]]; then
       wait "$pid" 2>/dev/null || true
     fi
   done
+  rm -f "${POLLY_PID_FILE}" "${POLLY_RESTART_FLAG}"
 }
 
 wait_for_service() {
@@ -45,6 +52,51 @@ wait_for_service() {
   done
   log "ERROR: $name did not become ready on port $port"
   return 1
+}
+
+start_cron() {
+  local cron_bin
+  cron_bin="$(command -v cron || true)"
+  if [[ -z "${cron_bin}" ]]; then
+    log "Cron binary not found; scheduled updates disabled"
+    return
+  fi
+  log "Starting cron daemon for update checks"
+  "${cron_bin}" -f &
+  CRON_PID=$!
+}
+
+start_polly() {
+  log "Starting Polly server (port ${PORT:-8081})"
+  node polly.js &
+  POLLY_PID=$!
+  echo "${POLLY_PID}" > "${POLLY_PID_FILE}"
+}
+
+run_polly_loop() {
+  local status
+  while true; do
+    start_polly
+    set +e
+    wait "${POLLY_PID}"
+    status=$?
+    set -e
+    rm -f "${POLLY_PID_FILE}"
+
+    if (( SHUTDOWN_REQUESTED )); then
+      log "Polly server stopped with status ${status}"
+      return "${status}"
+    fi
+
+    if [[ -f "${POLLY_RESTART_FLAG}" ]]; then
+      log "Polly restart requested; restarting service"
+      rm -f "${POLLY_RESTART_FLAG}"
+      continue
+    fi
+
+    log "Polly server exited with status ${status}"
+    return "${status}"
+  done
 }
 
 trap terminate INT TERM HUP
@@ -73,16 +125,14 @@ if ! wait_for_service "Presidio anonymizer" "${ANONYMIZER_PORT}"; then
   exit 1
 fi
 
-log "Starting Polly server (port ${PORT:-8081})"
-cd "$POLLY_DIR"
-node polly.js &
-POLLY_PID=$!
+start_cron
+
+cd "${POLLY_DIR}"
 
 set +e
-wait "$POLLY_PID"
+run_polly_loop
 POLLY_STATUS=$?
 set -e
 
-log "Polly server exited with status $POLLY_STATUS"
 terminate
-exit "$POLLY_STATUS"
+exit "${POLLY_STATUS}"
